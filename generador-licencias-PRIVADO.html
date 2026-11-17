@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Generador de licencias (PRIVADO)</title>
+<style>
+body{margin:0;background:#F4F6F4;color:#15221E;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:16px;line-height:1.5}
+.wrap{max-width:760px;margin:0 auto;padding:24px 20px 60px}
+h1{font-size:1.5rem;margin:0 0 4px}
+.warn{background:#FADFDC;color:#B3261E;border-radius:10px;padding:10px 14px;font-weight:700;margin:12px 0 20px}
+.panel{background:#fff;border:1px solid #D3DCD6;border-radius:14px;padding:20px;margin-bottom:18px}
+label{display:block;font-weight:700;font-size:.9rem;margin:12px 0 4px}
+input,textarea,select{font:inherit;width:100%;padding:9px 11px;border:1px solid #D3DCD6;border-radius:9px;box-sizing:border-box}
+textarea{min-height:90px;font-family:Consolas,monospace;font-size:.9rem}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:14px}
+.btn{font:inherit;font-weight:700;border-radius:10px;padding:9px 16px;border:1px solid #1E3A33;background:#1E3A33;color:#fff;cursor:pointer}
+.btn.sec{background:#fff;color:#15221E;border-color:#D3DCD6}
+.hint{font-size:.85rem;color:#56665F}
+[hidden]{display:none!important}
+table{width:100%;border-collapse:collapse;font-size:.9rem}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid #D3DCD6}
+td.k{font-family:Consolas,monospace;font-size:.75rem;word-break:break-all;max-width:260px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Generador de claves de activación</h1>
+  <div class="hint">Sistema de control de asistencia del personal</div>
+  <div class="warn">Archivo PRIVADO. Nunca lo envíes al cliente: con él cualquiera puede crear licencias.</div>
+
+  <div class="panel">
+    <label for="inst">Código de instalación que te envió el cliente</label>
+    <input id="inst" placeholder="INST-XXXX-XXXX" autocomplete="off" spellcheck="false">
+    <label for="cli">Cliente (aparece en Ajustes del sistema)</label>
+    <input id="cli" placeholder="Empresa ABC S.A.C.">
+    <label for="tipo">Tipo de licencia</label>
+    <select id="tipo">
+      <option value="temp">Temporal: vence en una fecha (mientras falte pagar)</option>
+      <option value="perm">Permanente (pago completo)</option>
+    </select>
+    <div id="boxFecha"><label for="vence">Vence el (inclusive)</label><input type="date" id="vence"></div>
+    <div class="row"><button class="btn" id="gen">Generar clave</button></div>
+    <label for="out">Clave de activación (envíala al cliente)</label>
+    <textarea id="out" readonly></textarea>
+    <div class="row"><button class="btn sec" id="copy">Copiar clave</button><span class="hint" id="msg"></span></div>
+  </div>
+
+  <div class="panel">
+    <h2 style="font-size:1.1rem;margin:0 0 8px">Claves generadas en esta computadora</h2>
+    <table><thead><tr><th>Fecha</th><th>Cliente</th><th>Instalación</th><th>Vence</th><th>Clave</th></tr></thead><tbody id="hist"></tbody></table>
+  </div>
+</div>
+<script>
+'use strict';
+const PRIV = {"kty":"EC","x":"IsC_Slm9jHEY_SFwTcpfts3mACqmdH4CDbAvg2rL2Gg","y":"I80TJM21K1e52ct1rl8Xq9VDyN9IQMERM_b8_lHtYCM","crv":"P-256","d":"LsitXMNjex-DJjoKS5ACavoYlkCKeQyOCuuFtPw9PaE"};
+const $ = s => document.querySelector(s);
+const b64u = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+const hoy = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+const fc = f => f ? f.split('-').reverse().join('/') : 'Permanente';
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function hist(){ try { return JSON.parse(localStorage.getItem('licencias-emitidas') || '[]'); } catch(e){ return []; } }
+function pintar(){ $('#hist').innerHTML = hist().slice().reverse().map(h => `<tr><td>${fc(h.e)}</td><td>${esc(h.c)}</td><td>${esc(h.i)}</td><td>${fc(h.v)}</td><td class="k">${esc(h.k)}</td></tr>`).join('') || '<tr><td colspan="5" class="hint">Todavía no generaste claves.</td></tr>'; }
+$('#tipo').addEventListener('change', () => { $('#boxFecha').hidden = $('#tipo').value === 'perm'; });
+$('#gen').addEventListener('click', async () => {
+  const i = $('#inst').value.trim().toUpperCase();
+  if (!/^INST-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(i)){ $('#msg').textContent = 'El código debe tener la forma INST-XXXX-XXXX.'; return; }
+  const perm = $('#tipo').value === 'perm', v = perm ? '' : $('#vence').value;
+  if (!perm && !v){ $('#msg').textContent = 'Elige la fecha de vencimiento.'; return; }
+  const datos = { i, c:$('#cli').value.trim(), v, e:hoy() };
+  const key = await crypto.subtle.importKey('jwk', PRIV, { name:'ECDSA', namedCurve:'P-256' }, false, ['sign']);
+  const p = new TextEncoder().encode(JSON.stringify(datos));
+  const s = await crypto.subtle.sign({ name:'ECDSA', hash:'SHA-256' }, key, p);
+  const clave = b64u(p) + '.' + b64u(s);
+  $('#out').value = clave;
+  $('#msg').textContent = v ? `Válida hasta el ${fc(v)}, solo en ${i}.` : `Permanente, solo en ${i}.`;
+  const h = hist(); h.push({ ...datos, k:clave }); localStorage.setItem('licencias-emitidas', JSON.stringify(h)); pintar();
+});
+$('#copy').addEventListener('click', async () => { try { await navigator.clipboard.writeText($('#out').value); } catch(e){ $('#out').select(); document.execCommand('copy'); } $('#msg').textContent = 'Clave copiada.'; });
+pintar();
+</script>
+</body>
+</html>
