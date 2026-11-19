@@ -1,6 +1,6 @@
 // Service worker: guarda la aplicación para que abra sin internet.
 // Al publicar una versión nueva, cambia el número de VERSION.
-const VERSION = 'asistencia-v4';
+const VERSION = 'asistencia-v6';
 const ARCHIVOS = ['./', './index.html', './manifest.webmanifest', './icono-192.png', './icono-512.png'];
 
 self.addEventListener('install', e => {
